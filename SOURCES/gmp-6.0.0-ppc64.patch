@@ -1,0 +1,13 @@
+diff -up gmp-6.0.0/mpn/powerpc64/mode64/gcd_1.asm.rh1 gmp-6.0.0/mpn/powerpc64/mode64/gcd_1.asm
+--- gmp-6.0.0/mpn/powerpc64/mode64/gcd_1.asm.rh1	2014-04-24 17:44:56.282296502 +0200
++++ gmp-6.0.0/mpn/powerpc64/mode64/gcd_1.asm	2014-04-24 17:46:07.291786670 +0200
+@@ -43,6 +43,9 @@ define(`up',    `r3')
+ define(`n',     `r4')
+ define(`v0',    `r5')
+ 
++ifdef(`BMOD_1_TO_MOD_1_THRESHOLD',,
++  `define(`BMOD_1_TO_MOD_1_THRESHOLD',30)')
++
+ EXTERN_FUNC(mpn_mod_1)
+ EXTERN_FUNC(mpn_modexact_1c_odd)
+ 
