@@ -3,28 +3,37 @@
 # This rpm has to be build on a CPU with sse2 support like Pentium 4 !
 #
 
-Summary: A GNU arbitrary precision library
+Summary: GNU arbitrary precision library
 Name: gmp
-Version: 6.0.0
-Release: 15%{?dist}
+Version: 6.2.1
+Release: 8%{?dist}
 Epoch: 1
-URL: http://gmplib.org/
-Source0: ftp://ftp.gmplib.org/pub/gmp-%{version}/gmp-%{version}a.tar.bz2
-# or ftp://ftp.gnu.org/pub/gnu/gmp/gmp-%{version}.tar.xz
+URL: https://gmplib.org/
+Source0: https://gmplib.org/download/gmp/gmp-%{version}.tar.xz
 Source2: gmp.h
 Source3: gmp-mparam.h
-Patch1: gmp-6.0.0-ppc64.patch
+Patch2: gmp-6.0.0-debuginfo.patch
+Patch3: gmp-intel-cet.patch
 
-License: LGPLv3+ or GPLv2+
-Group: System Environment/Libraries
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+# * Main sources are dual licensed under LGPL-3.0-or-later and GPL-2.0-or-later
+#   Either only one may be active or both simultaneously.
+# * Some docs are under GFDL-1.3-invariants-or-later.
+# * demos are under GPL-3.0-or-later but they are NOT shipped.
+# * tests are under GPL-3.0-or-later but they are NOT shipped.
+License: (LGPL-3.0-or-later OR GPL-2.0-or-later OR (LGPL-3.0-or-later AND GPL-2.0-or-later)) AND GFDL-1.3-invariants-or-later
+
 BuildRequires: autoconf automake libtool
-BuildRequires: fipscheck
+BuildRequires: gcc
+BuildRequires: gcc-c++
+BuildRequires: git
 #autoreconf on arm needs:
 BuildRequires: perl-Carp
-
-# For RHEL7 and below, we need to explicitly enable the hardened build:
-%global _hardened_build 1
+# Generate the .hmac checksum unless --without fips is used
+%bcond_without fips
+%if %{with fips}
+BuildRequires: fipscheck
+%endif
+BuildRequires: make
 
 %description
 The gmp package contains GNU MP, a library for arbitrary precision
@@ -38,12 +47,17 @@ emphasizes speed over simplicity/elegance in its operations.
 Install the gmp package if you need a fast arbitrary precision
 library.
 
+%package c++
+Summary: C++ bindings for the GNU MP arbitrary precision library
+Requires: %{name}%{?_isa} = %{epoch}:%{version}-%{release}
+
+%description c++
+Bindings for using the GNU MP arbitrary precision library in C++ applications.
+
 %package devel
 Summary: Development tools for the GNU MP arbitrary precision library
-Group: Development/Libraries
-Requires: %{name} = %{epoch}:%{version}-%{release}
-Requires(post): /sbin/install-info
-Requires(preun): /sbin/install-info
+Requires: %{name}%{?_isa} = %{epoch}:%{version}-%{release}
+Requires: %{name}-c++%{?_isa} = %{epoch}:%{version}-%{release}
 
 %description devel
 The libraries, header files and documentation for using the GNU MP 
@@ -55,7 +69,6 @@ install the gmp package.
 
 %package static
 Summary: Development tools for the GNU MP arbitrary precision library
-Group: Development/Libraries
 Requires: %{name}-devel = %{epoch}:%{version}-%{release}
 
 %description static
@@ -63,8 +76,7 @@ The static libraries for using the GNU MP arbitrary precision library
 in applications.
 
 %prep
-%setup -q
-%patch1 -p1 -b .ppc64
+%autosetup -S git
 
 # switch the defaults to new cpus on s390x
 %ifarch s390x
@@ -78,99 +90,40 @@ if as --help | grep -q execstack; then
   export CCAS="gcc -c -Wa,--noexecstack"
 fi
 
-# Temporary workaround for BZ #1409738 - once it gets fixed
-# (e.g. build starts to fail because of this), remove it...
-sed -e 's|compiler_flags=$|compiler_flags="%{_hardened_ldflags}"|' -i ltmain.sh
-
-
-mkdir base
-cd base
-ln -s ../configure .
-
 %ifarch %{ix86}
-  export CFLAGS=$(echo %{optflags} | sed -e "s/-mtune=[^ ]*//g" | sed -e "s/-march=[^ ]*//g")" -march=i686"
-  export CXXFLAGS=$(echo %{optflags} | sed -e "s/-mtune=[^ ]*//g" | sed -e "s/-march=[^ ]*//g")" -march=i686"
+  export CFLAGS=$(echo %{optflags} | sed -e "s/-mtune=[^ ]*//g" | sed -e "s/-march=[^ ]*/-march=i686/g")
+  export CXXFLAGS=$(echo %{optflags} | sed -e "s/-mtune=[^ ]*//g" | sed -e "s/-march=[^ ]*/-march=i686/g")
 %endif
 
-%configure --enable-cxx --enable-shared
+%configure --enable-cxx --enable-fat
 
 sed -e 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' \
     -e 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' \
     -e 's|-lstdc++ -lm|-lstdc++|' \
     -i libtool
-
 export LD_LIBRARY_PATH=`pwd`/.libs
-make %{?_smp_mflags}
-cd ..
+%make_build
 
-%ifarch %{ix86}
-mkdir build-sse2
-cd build-sse2
-ln -s ../configure .
-
-export CFLAGS=$(echo %{optflags} | sed -e "s/-mtune=[^ ]*//g" | sed -e "s/-march=[^ ]*//g")" -march=pentium4"
-export CXXFLAGS=$(echo %{optflags} | sed -e "s/-mtune=[^ ]*//g" | sed -e "s/-march=[^ ]*//g")" -march=pentium4"
-
-%configure --enable-cxx
-
-sed -e 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' \
-    -e 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' \
-    -e 's|-lstdc++ -lm|-lstdc++|' \
-    -i libtool
-
-export LD_LIBRARY_PATH=`pwd`/.libs
-make %{?_smp_mflags}
-unset CFLAGS
-cd ..
-%endif
-
-# Add generation of HMAC checksums of the final stripped binaries
-# bz#1117188
-%ifarch %{ix86}
+%if %{with fips}
 %define __spec_install_post \
     %{?__debug_package:%{__debug_install_post}} \
     %{__arch_install_post} \
     %{__os_install_post} \
-    mkdir $RPM_BUILD_ROOT%{_libdir}/fipscheck \
-    fipshmac -d $RPM_BUILD_ROOT%{_libdir}/fipscheck $RPM_BUILD_ROOT%{_libdir}/libgmp.so.10.2.0 \
-    mkdir $RPM_BUILD_ROOT%{_libdir}/sse2/fipscheck \
-    fipshmac -d $RPM_BUILD_ROOT%{_libdir}/sse2/fipscheck $RPM_BUILD_ROOT%{_libdir}/sse2/libgmp.so.10.2.0 \
-    ln -s libgmp.so.10.2.0.hmac $RPM_BUILD_ROOT%{_libdir}/sse2/fipscheck/libgmp.so.10.hmac \
-    ln -s libgmp.so.10.2.0.hmac $RPM_BUILD_ROOT%{_libdir}/fipscheck/libgmp.so.10.hmac \
-%{nil}
-%else
-%define __spec_install_post \
-    %{?__debug_package:%{__debug_install_post}} \
-    %{__arch_install_post} \
-    %{__os_install_post} \
-    mkdir $RPM_BUILD_ROOT%{_libdir}/fipscheck \
-    fipshmac -d $RPM_BUILD_ROOT%{_libdir}/fipscheck $RPM_BUILD_ROOT%{_libdir}/libgmp.so.10.2.0 \
-    ln -s libgmp.so.10.2.0.hmac $RPM_BUILD_ROOT%{_libdir}/fipscheck/libgmp.so.10.hmac \
+    fipshmac -d $RPM_BUILD_ROOT%{_libdir} $RPM_BUILD_ROOT%{_libdir}/libgmp.so.10.* \
+    file=`basename $RPM_BUILD_ROOT%{_libdir}/libgmp.so.10.*.hmac` && \
+        mv $RPM_BUILD_ROOT%{_libdir}/$file $RPM_BUILD_ROOT%{_libdir}/.$file && \
+        ln -s .$file $RPM_BUILD_ROOT%{_libdir}/.libgmp.so.10.hmac
 %{nil}
 %endif
 
 %install
-cd base
 export LD_LIBRARY_PATH=`pwd`/.libs
-make install DESTDIR=$RPM_BUILD_ROOT
+%make_install 
 install -m 644 gmp-mparam.h ${RPM_BUILD_ROOT}%{_includedir}
 rm -f $RPM_BUILD_ROOT%{_libdir}/lib{gmp,mp,gmpxx}.la
 rm -f $RPM_BUILD_ROOT%{_infodir}/dir
 /sbin/ldconfig -n $RPM_BUILD_ROOT%{_libdir}
 ln -sf libgmpxx.so.4 $RPM_BUILD_ROOT%{_libdir}/libgmpxx.so
-cd ..
-%ifarch %{ix86}
-cd build-sse2
-export LD_LIBRARY_PATH=`pwd`/.libs
-mkdir $RPM_BUILD_ROOT%{_libdir}/sse2
-install -m 755 .libs/libgmp.so.*.* $RPM_BUILD_ROOT%{_libdir}/sse2
-cp -a .libs/libgmp.so.[^.]* $RPM_BUILD_ROOT%{_libdir}/sse2
-chmod 755 $RPM_BUILD_ROOT%{_libdir}/sse2/libgmp.so.[^.]*
-install -m 755 .libs/libgmpxx.so.*.* $RPM_BUILD_ROOT%{_libdir}/sse2
-cp -a .libs/libgmpxx.so.? $RPM_BUILD_ROOT%{_libdir}/sse2
-chmod 755 $RPM_BUILD_ROOT%{_libdir}/sse2/libgmpxx.so.?
-cd ..
-%endif
 
 # Rename gmp.h to gmp-<arch>.h and gmp-mparam.h to gmp-mparam-<arch>.h to 
 # avoid file conflicts on multilib systems and install wrapper include files
@@ -198,106 +151,196 @@ install -m644 %{SOURCE3} %{buildroot}/%{_includedir}/gmp-mparam.h
 
 %check
 %ifnarch ppc
-cd base
 export LD_LIBRARY_PATH=`pwd`/.libs
-make %{?_smp_mflags} check
-cd ..
-%endif
-%ifarch %{ix86}
-cd build-sse2
-export LD_LIBRARY_PATH=`pwd`/.libs
-make %{?_smp_mflags} check
-cd ..
+%make_build check
 %endif
 
-%post -p /sbin/ldconfig
+%ldconfig_scriptlets
 
-%postun -p /sbin/ldconfig
-
-%post devel
-if [ -f %{_infodir}/gmp.info.gz ]; then
-    /sbin/install-info %{_infodir}/gmp.info.gz %{_infodir}/dir || :
-fi
-exit 0
-
-%preun devel
-if [ $1 = 0 ]; then
-    if [ -f %{_infodir}/gmp.info.gz ]; then
-        /sbin/install-info --delete %{_infodir}/gmp.info.gz %{_infodir}/dir || :
-    fi
-fi
-exit 0
+%ldconfig_scriptlets c++
 
 %files
-%defattr(-,root,root,-)
-%{!?_licensedir:%global license %%doc}
 %license COPYING COPYING.LESSERv3 COPYINGv2 COPYINGv3
 %doc NEWS README
 %{_libdir}/libgmp.so.*
-%{_libdir}/libgmpxx.so.*
-%{_libdir}/fipscheck/libgmp.so.10.2.0.hmac
-%{_libdir}/fipscheck/libgmp.so.10.hmac
-%ifarch %{ix86}
-%{_libdir}/sse2/*
+%if %{with fips}
+%{_libdir}/.libgmp.so.*.hmac
 %endif
 
+%files c++
+%{_libdir}/libgmpxx.so.*
+
 %files devel
-%defattr(-,root,root,-)
 %{_libdir}/libgmp.so
 %{_libdir}/libgmpxx.so
+%{_libdir}/pkgconfig/gmp.pc
+%{_libdir}/pkgconfig/gmpxx.pc
 %{_includedir}/*.h
 %{_infodir}/gmp.info*
 
 %files static
-%defattr(-,root,root,-)
 %{_libdir}/libgmp.a
 %{_libdir}/libgmpxx.a
 
-
 %changelog
-* Mon Mar 13 2017 David Kaspar [Dee'Kej] <dkaspar@redhat.com> - 1:6.0.0-15
-- Macro in previous changelog entry escaped
+* Wed Jan 24 2024 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.1-8
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
 
-* Thu Mar 09 2017 David Kaspar [Dee'Kej] <dkaspar@redhat.com> - 1:6.0.0-14
-- FLAGS filtering moved before calling %%configure macro to avoid performance regressions
+* Fri Jan 19 2024 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.1-7
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
 
-* Wed Feb 15 2017 David Kaspar [Dee'Kej] <dkaspar@redhat.com> - 1:6.0.0-13
-- Explicitly added '-g' option into CFLAGS & CXXFLAGS to correctly build .debug_info for i386 (bug #1413034)
-- Added a workaround to correctly add hardening flags during build process (bug #1406689)
+* Mon Aug 07 2023 Lukáš Zaoral <lzaoral@redhat.com> - 1:6.2.1-6
+- migrate to SPDX license format
 
-* Thu Sep 17 2015 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.0.0-12
-- add hmac checksum to /lib/sse2/...
-- resolves:#1262803
+* Wed Jul 19 2023 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.1-5
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_39_Mass_Rebuild
 
-* Tue Sep 09 2014 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.0.0-11
-- rebase to 6.0.0 (fixed)
-- resolves:#1110689
+* Thu Jan 19 2023 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.1-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_38_Mass_Rebuild
 
-* Tue Sep 09 2014 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.0.0-10
-- rebase to 6.0.0 (fixed)
-- resolves:#1110689
+* Thu Jul 21 2022 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.1-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_37_Mass_Rebuild
 
-* Mon Sep 08 2014 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.0.0-9
-- rebase to 6.0.0
-- resolves:#1110689
+* Thu Jan 20 2022 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.1-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_36_Mass_Rebuild
 
-* Tue Sep 02 2014 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.1-9
-- added hmac checksums needed for fips
-- resolves:#1117188
+* Tue Aug 31 2021 Jakub Martisko <jamartis@redhat.com> - 1:6.2.1-1
+- Rebase to gmp-6.2.1
+- Minor update of the cet patch
+Resolves: rhbz#1897831
 
-* Mon Aug 25 2014 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.1-8
-- ppc64le
-- resolves:#1125516
+* Tue Aug 31 2021 Jakub Martisko <jamartis@redhat.com> - 1:6.2.0-8
+- Enable intel CET
+- Fix based on the patches provided by H.J. Lu
+Resolves: rhbz#1795709
 
-* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 1:5.1.1-5
-- Mass rebuild 2014-01-24
+* Thu Jul 22 2021 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.0-7
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_35_Mass_Rebuild
 
-* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 1:5.1.1-4
-- Mass rebuild 2013-12-27
+* Tue Jan 26 2021 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.0-6
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
 
-* Tue Nov 05 2013 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.1-3
-- resolves: #1023791
+* Tue Sep 15 2020 Kalev Lember <klember@redhat.com> - 1:6.2.0-5
+- Move gmpxx.pc to -devel subpackage as well
+
+* Fri Aug 07 2020 Peter Robinson <pbrobinson@fedoraproject.org> - 1:6.2.0-4
+- The pkgcfg file should be in devel
+
+* Tue Jul 28 2020 Jakub Martisko <jamartis@redhat.com> - 1:6.2.0-3
+- Use make macros
+
+* Mon Jul 27 2020 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
+
+* Mon Feb 17 2020 Jakub Martisko <jamartis@redhat.com> - 1:6.2.0-1
+- Rebase to 6.2.0
+
+* Tue Jan 28 2020 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-13
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_32_Mass_Rebuild
+
+* Tue Dec 03 2019 Jakub Martisko <jamartis@redhat.com> - 1:6.1.2-12
+- Reenable the fat binaries build option
+Resolves: #1779060
+
+* Thu Jul 25 2019 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-11
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild
+
+* Fri Feb 15 2019 Anderson Toshiyuki Sasaki <ansasaki@redhat.com> - 1:6.1.2-10
+- Create HMAC checksum for FIPS integrity self tests
+
+* Thu Jan 31 2019 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-9
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_30_Mass_Rebuild
+
+* Fri Jul 13 2018 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-8
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_29_Mass_Rebuild
+
+* Wed Feb 07 2018 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-7
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Wed Aug 02 2017 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-6
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
+
+* Wed Jul 26 2017 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-5
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Mass_Rebuild
+
+* Mon Mar 13 2017 David Kaspar [Dee'Kej] <dkaspar@redhat.com> - 1:6.1.2-4
+- Fix the build process for ix89 family
+
+* Fri Feb 17 2017 David Kaspar [Dee'Kej] <dkaspar@redhat.com> - 1:6.1.2-3
+- Build process updated to correctly build .debug_info for i386
+  and to correctly use hardening flags
+
+* Fri Feb 10 2017 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.2-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_26_Mass_Rebuild
+
+* Tue Dec 20 2016 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.1.2-1
+- rebase
+
+* Wed Jun 22 2016 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.1.1-1
+- rebase
+
+* Fri Apr 08 2016 Yaakov Selkowitz <yselkowi@redhat.com> - 1:6.1.0-3
+- Split c++ subpackage (#1325439)
+
+* Wed Feb 03 2016 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.1.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_24_Mass_Rebuild
+
+* Wed Nov 25 2015 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.1.0-1
+- rebase to 6.1.0
+- gmp-6.0.0-ppc64.patch already upstream, dropped
+
+* Mon Sep 14 2015 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.0.0-13
+- do not package sse2 variant, use --enable-fat instead (a bit dangerous, some low level routines will be skipped in `make check`)
+
+* Fri Sep 04 2015 Michal Toman <mtoman@fedoraproject.org> - 1:6.0.0-12
+- Add support for MIPS architecture to gmp.h and gmp-mparam.h
+
+* Wed Jun 17 2015 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 1:6.0.0-11
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_23_Mass_Rebuild
+
+* Sat May 02 2015 Kalev Lember <kalevlember@gmail.com> - 1:6.0.0-10
+- Rebuilt for GCC 5 C++11 ABI change
+
+* Thu Apr 02 2015 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.0.0-9
+- bug965318 - improve debuginfo of assembler sources
+
+* Thu Sep 04 2014 Dan Horák <dan[at]danny.cz> - 1:6.0.0-8
+- drop s390x patch, support is already in upstream
+
+* Sat Aug 16 2014 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 1:6.0.0-7
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_21_22_Mass_Rebuild
+
+* Sat Jul 12 2014 Tom Callaway <spot@fedoraproject.org> - 1:6.0.0-6
+- fix license handling
+
+* Thu Jul 10 2014 Brent Baude <baude@us.ibm.com> - 1:6.0.0-5
+- Fix gmp headers for ppc64le (#1083429)
+
+* Sat Jun 07 2014 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 1:6.0.0-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_21_Mass_Rebuild
+
+* Thu Apr 24 2014 Karsten Hopp <karsten@redhat.com> 6.0.0-3
+- set default for BMOD_1_TO_MOD_1_THRESHOLD on ppc64, patch by 
+  Torbjorn Granlund:
+  https://gmplib.org/repo/gmp/rev/4a6d258b467f
+
+* Mon Apr 14 2014 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:6.0.0-2
+- rebase
+
+* Wed Nov 06 2013 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.3-2
 - support for aarch64
+
+* Wed Nov 06 2013 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.3-1
+- rebase to 5.1.3
+
+* Sat Aug 03 2013 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 1:5.1.2-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_20_Mass_Rebuild
+
+* Thu May 30 2013 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.2-1
+- rebase to 5.1.2
+
+* Thu Mar 28 2013 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.1-3
+- added build dependency needed to autoreconf on arm
 
 * Thu Feb 14 2013 Frantisek Kluknavsky <fkluknav@redhat.com> - 1:5.1.1-2
 - rebase to 5.1.1

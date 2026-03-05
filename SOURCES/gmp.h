@@ -67,6 +67,20 @@ along with the GNU MP Library.  If not, see http://www.gnu.org/licenses/.  */
 #include "gmp-sparc.h"
 #elif defined(__aarch64__)
 #include "gmp-aarch64.h"
+#elif defined(__mips64) && defined(__MIPSEL__)
+#include "gmp-mips64el.h"
+#elif defined(__mips64)
+#include "gmp-mips64.h"
+#elif defined(__mips) && defined(__MIPSEL__)
+#include "gmp-mipsel.h"
+#elif defined(__mips)
+#include "gmp-mips.h"
+#elif defined(__riscv)
+#if __riscv_xlen == 64
+#include "gmp-riscv64.h"
+#else
+#error "No support for riscv32"
+#endif
 #else
 #error "The gmp-devel package is not usable with the architecture."
 #endif
