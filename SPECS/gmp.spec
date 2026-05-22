@@ -10,7 +10,7 @@
 Summary: GNU arbitrary precision library
 Name: gmp
 Version: 6.2.1
-Release: %{?xsrel}%{?dist}
+Release: %{?xsrel}~XCPNG2698.3%{?dist}
 
 %if 0%{?xenserver} < 9
 Epoch: 1
