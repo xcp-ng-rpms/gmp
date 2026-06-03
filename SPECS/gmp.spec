@@ -6,7 +6,7 @@
 Summary: GNU arbitrary precision library
 Name: gmp
 Version: 6.2.1
-Release: 8%{?dist}
+Release: 8.1%{?dist}
 Epoch: 1
 URL: https://gmplib.org/
 Source0: https://gmplib.org/download/gmp/gmp-%{version}.tar.xz
@@ -28,8 +28,8 @@ BuildRequires: gcc-c++
 BuildRequires: git
 #autoreconf on arm needs:
 BuildRequires: perl-Carp
-# Generate the .hmac checksum unless --without fips is used
-%bcond_without fips
+# XCP-Ng: Don't generate the .hmac checksum to align XS
+%bcond_with fips
 %if %{with fips}
 BuildRequires: fipscheck
 %endif
@@ -183,6 +183,9 @@ export LD_LIBRARY_PATH=`pwd`/.libs
 %{_libdir}/libgmpxx.a
 
 %changelog
+* Wed Jul 15 2026 Philippe Coval <philippe.coval@vates.tech> - 1:6.2.1-8.1
+- Disable fips dep by default to align XS
+
 * Wed Jan 24 2024 Fedora Release Engineering <releng@fedoraproject.org> - 1:6.2.1-8
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
 
